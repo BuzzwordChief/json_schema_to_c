@@ -27,17 +27,20 @@ from .integer import IntegerGenerator, NumericStringGenerator, IntegerStringAnyO
 from .float import FloatGenerator
 from .bool import BoolGenerator
 from .object import ObjectGenerator
-from .string import StringGenerator
+from .string import StringGenerator, StringOrNullAnyOfGenerator
 from .enum import EnumGenerator
+from .one_of import OneOfGenerator
 from .base import SchemaError
 
 
 class GeneratorFactory:
     #pylint: disable=too-few-public-methods
     GENERATORS = [
+        OneOfGenerator,
         EnumGenerator,
         NumericStringGenerator,
         IntegerStringAnyOfGenerator,
+        StringOrNullAnyOfGenerator,
         StringGenerator,
         IntegerGenerator,
         FloatGenerator,
@@ -55,7 +58,7 @@ class GeneratorFactory:
                 .format(schema)
             )
 
-        if 'type' not in schema and 'anyOf' not in schema:
+        if 'type' not in schema and 'anyOf' not in schema and 'oneOf' not in schema:
             raise SchemaError(parameters.path_in_schema, "Missing field: 'type'")
         for generator_class in cls.GENERATORS:
             if generator_class.can_parse_schema(schema):

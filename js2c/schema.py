@@ -49,8 +49,6 @@ def resolve_children(full_schema, part_to_resolve):
 def resolve_ref(full_schema, part_to_resolve):
     if not isinstance(part_to_resolve, dict) or "$ref" not in part_to_resolve:
         return part_to_resolve
-    if len(part_to_resolve) > 1:
-        raise ValueError("Reference nodes should not contain other fields")
 
     ref_str = part_to_resolve["$ref"]
     if ref_str[0] != '#':
@@ -62,7 +60,19 @@ def resolve_ref(full_schema, part_to_resolve):
     while ref_str:
         part, ref_str = ref_str.split('/', 1)
         replacement = replacement[part]
-    return replacement
+
+    siblings = OrderedDict(
+        (k, v) for k, v in part_to_resolve.items() if k != "$ref"
+    )
+    if not siblings:
+        return replacement
+    if not isinstance(replacement, dict):
+        raise ValueError("Cannot apply fields to non-object $ref target")
+
+    # Copy so sibling overrides (e.g. description) do not mutate shared defs.
+    result = OrderedDict((k, v) for k, v in replacement.items())
+    result.update(siblings)
+    return result
 # WARNING OVER
 
 
@@ -95,9 +105,9 @@ def all_of_merge_dict(schema1, schema2):
 
 
 def resolve_all_of(schema):
+    if isinstance(schema, list):
+        return [resolve_all_of(item) for item in schema]
     if not isinstance(schema, dict):
-        # TODO: Also process arrays in the schema. I'm not sure it's needed though, there are not many arrays
-        #       in schema definitions, and I think none of them need allOf expansion.
         return schema
 
     result = OrderedDict((k, resolve_all_of(v)) for k, v in schema.items() if k != "allOf")
@@ -108,8 +118,27 @@ def resolve_all_of(schema):
     return result
 
 
+def normalize_const(schema):
+    if isinstance(schema, list):
+        return [normalize_const(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+
+    if 'const' in schema and 'type' not in schema and 'enum' not in schema:
+        const_val = schema['const']
+        if isinstance(const_val, str):
+            result = OrderedDict(schema)
+            result['type'] = 'string'
+            result['enum'] = [const_val]
+            result['default'] = const_val
+            return OrderedDict((k, normalize_const(v)) for k, v in result.items())
+
+    return OrderedDict((k, normalize_const(v)) for k, v in schema.items())
+
+
 def load_schema(schema_file):
     schema = json.load(schema_file, object_pairs_hook=OrderedDict)
     resolve_children(schema, schema)
     schema = resolve_all_of(schema)
+    schema = normalize_const(schema)
     return schema

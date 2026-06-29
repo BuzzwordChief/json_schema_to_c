@@ -1,0 +1,23 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "root",
+    "description": "Schema exercising $ref nodes with sibling descriptions.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "timestamp"
+    ],
+    "properties": {
+        "timestamp": {
+            "$ref": "#/definitions/taiNs",
+            "description": "Event time as TAI nanoseconds string."
+        }
+    },
+    "definitions": {
+        "taiNs": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "Generic TAI nanoseconds since epoch."
+        }
+    }
+}

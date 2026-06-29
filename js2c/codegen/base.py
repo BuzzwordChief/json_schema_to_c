@@ -27,6 +27,16 @@ from collections import namedtuple
 import re
 
 
+def sanitize_schema_id(schema_id):
+    if '/' in schema_id or ':' in schema_id:
+        schema_id = schema_id.rstrip('/').split('/')[-1]
+    schema_id = re.sub(r'\.schema\.json$', '', schema_id, flags=re.IGNORECASE)
+    schema_id = re.sub(r'[^A-Za-z0-9_]', '_', schema_id)
+    if schema_id and schema_id[0].isdigit():
+        schema_id = '_{}'.format(schema_id)
+    return schema_id
+
+
 class SchemaError(ValueError):
     def __init__(self, generator_or_path, message):
         if isinstance(generator_or_path, str):
@@ -90,9 +100,9 @@ class Generator(ABC):
 
         if self.js2cType is not None:
             self.type_name = self.js2cType
-        elif "$id" in schema:
-            # Remove starting # if present
-            self.type_name = re.sub("^#", "", schema["$id"]) + "_t"
+        elif "$id" in schema and not parameters.path_in_schema:
+            # Remove starting # if present. Only use schema $id for the root type.
+            self.type_name = sanitize_schema_id(re.sub("^#", "", schema["$id"])) + "_t"
         else:
             self.type_name = parameters.type_name
 

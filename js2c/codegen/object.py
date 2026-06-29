@@ -115,11 +115,7 @@ class ObjectGenerator(Generator):
             if field_generator.has_default_value():
                 continue
             if field_name not in self.required:
-                raise SchemaError(
-                    self,
-                    "Field '{}' must be required or have a default value"
-                    .format(field_name)
-                )
+                continue
             with out_file.if_block("!seen_{}".format(field_name)):
                 self.generate_logged_error("Missing required field in '%s': {}".format(field_name), out_file)
 

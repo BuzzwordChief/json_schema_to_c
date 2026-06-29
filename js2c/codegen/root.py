@@ -29,7 +29,7 @@ from .code_block_printer import CodeBlockPrinter
 
 from .generator_factory import GeneratorFactory
 from .type_cache import TypeCache
-from .base import GeneratorInitParameters, SchemaError
+from .base import GeneratorInitParameters, SchemaError, sanitize_schema_id
 
 
 DIR_OF_THIS_FILE = os.path.dirname(__file__)
@@ -45,18 +45,21 @@ class RootGenerator:
         self.settings = settings
         if '$id' not in schema:
             raise SchemaError("", "All schemas must have an ID (a field named '$id')")
+        if self.settings.allow_additional_properties is None and 'oneOf' in schema:
+            self.settings.allow_additional_properties = 32
+        schema_name = sanitize_schema_id(schema['$id'])
         self.root_generator = GeneratorFactory.get_generator_for(
             schema,
             GeneratorInitParameters(
                 '',
-                schema['$id'],
-                schema['$id'] + '_t',
+                schema_name,
+                schema_name + '_t',
                 settings,
                 GeneratorFactory,
                 TypeCache(),
             )
         )
-        self.name = schema['$id']
+        self.name = schema_name
 
     def generate_root_parser(self, out_file, max_token_num):
         out_file.print("bool json_parse_{}(const char *json_string, {} *out)".format(self.name, self.root_generator.c_type))

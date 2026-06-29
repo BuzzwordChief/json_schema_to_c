@@ -22,7 +22,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
+from collections import OrderedDict
+
 from .base import Generator, CType, SchemaError
+
+
+NESTED_DEFAULT_MAX_STRING_LENGTH = 256
 
 
 class StringType(CType):
@@ -61,7 +66,10 @@ class StringGenerator(Generator):
         assert 'enum' not in schema, "Enums should be generated with EnumGenerator"
 
         if self.maxLength is None:
-            raise SchemaError(self, "Strings must have maxLength")
+            if parameters.path_in_schema:
+                self.maxLength = NESTED_DEFAULT_MAX_STRING_LENGTH
+            else:
+                raise SchemaError(self, "Strings must have maxLength")
 
         if self.default is not None and len(self.default) > self.maxLength:
             raise SchemaError(self, "String default value longer than maxLength")
@@ -148,3 +156,89 @@ class StringGenerator(Generator):
 
     def max_token_num(self):
         return 1
+
+
+class NullableType(CType):
+    def __init__(self, type_name, description, inner_type):
+        super().__init__(type_name, description)
+        self.inner_type = inner_type
+
+    def generate_type_declaration_impl(self, out_file):
+        self.inner_type.generate_type_declaration(out_file)
+        out_file.print("typedef struct {")
+        with out_file.indent():
+            out_file.print("bool is_null;")
+            out_file.print("{} value;".format(self.inner_type))
+        out_file.print("}} {};".format(self.type_name))
+        out_file.print("")
+
+    def generate_field_declaration(self, field_name, out_file):
+        out_file.print_with_docstring(
+            "{} {};".format(self.type_name, field_name), self.description
+        )
+
+    def __eq__(self, other):
+        return (
+            super().__eq__(other) and
+            self.inner_type == other.inner_type
+        )
+
+
+class StringOrNullAnyOfGenerator(Generator):
+    def __init__(self, schema, parameters):
+        non_null_schemas = [item for item in schema['anyOf'] if item.get('type') != 'null']
+        if len(non_null_schemas) != 1:
+            raise SchemaError(self, "anyOf with null must have exactly one non-null schema")
+
+        merged_schema = OrderedDict(schema)
+        merged_schema.update(non_null_schemas[0])
+        merged_schema.pop('anyOf', None)
+        super().__init__(merged_schema, parameters)
+
+        self.inner_generator = parameters.generator_factory.get_generator_for(
+            merged_schema,
+            parameters.with_suffix("anyOf.value", self.type_name, "value"),
+        )
+        self.c_type = NullableType(self.type_name, self.description, self.inner_generator.c_type)
+        self.c_type = parameters.type_cache.try_get_cached(self.c_type)
+
+    @classmethod
+    def can_parse_schema(cls, schema):
+        if "anyOf" not in schema or len(schema['anyOf']) != 2:
+            return False
+        has_null = False
+        non_null_count = 0
+        for item in schema['anyOf']:
+            if item.get('type') == 'null':
+                has_null = True
+            else:
+                non_null_count += 1
+        return has_null and non_null_count == 1
+
+    def generate_parser_call(self, out_var_name, out_file):
+        with out_file.if_block("check_type(parse_state, JSMN_NULL)"):
+            out_file.print("{}->is_null = true;".format(out_var_name))
+            out_file.print("parse_state->current_token += 1;")
+            out_file.print("return false;")
+
+        out_file.print("{}->is_null = false;".format(out_var_name))
+        self.inner_generator.generate_parser_call(
+            "&{}->value".format(out_var_name),
+            out_file
+        )
+
+    def generate_parser_bodies(self, out_file):
+        self.inner_generator.generate_parser_bodies(out_file)
+
+    def has_default_value(self):
+        return self.inner_generator.has_default_value()
+
+    def generate_set_default_value(self, out_var_name, out_file):
+        out_file.print("{}->is_null = false;".format(out_var_name))
+        self.inner_generator.generate_set_default_value(
+            "{}->value".format(out_var_name),
+            out_file
+        )
+
+    def max_token_num(self):
+        return self.inner_generator.max_token_num()

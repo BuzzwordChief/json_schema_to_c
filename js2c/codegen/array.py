@@ -25,6 +25,9 @@
 from .base import Generator, CType, SchemaError
 
 
+NESTED_DEFAULT_MAX_ARRAY_ITEMS = 64
+
+
 class ArrayType(CType):
     def __init__(self, type_name, description, item_type, max_items):
         super().__init__(type_name, description)
@@ -62,7 +65,10 @@ class ArrayGenerator(Generator):
     def __init__(self, schema, parameters):
         super().__init__(schema, parameters)
         if self.maxItems is None:
-            raise SchemaError(self, "Arrays must have 'maxItems'")
+            if parameters.path_in_schema:
+                self.maxItems = NESTED_DEFAULT_MAX_ARRAY_ITEMS
+            else:
+                raise SchemaError(self, "Arrays must have 'maxItems'")
 
         if 'items' not in schema:
             raise SchemaError(self, "Missing field for array declaration: 'items'")
