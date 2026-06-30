@@ -27,6 +27,19 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#define JS2C_DOUBLE_STR_MAX_LEN 25
+
+#ifndef JS2C_DOUBLE_HOOKS_DECLARED
+#define JS2C_DOUBLE_HOOKS_DECLARED
+typedef int (*js2c_str_to_double_fn_t)(const char *str, double *out);
+typedef void (*js2c_double_to_str_fn_t)(double value, char result[JS2C_DOUBLE_STR_MAX_LEN]);
+#endif
+
+void js2c_set_str_to_double(js2c_str_to_double_fn_t fn);
+void js2c_set_double_to_str(js2c_double_to_str_fn_t fn);
+void js2c_format_double(double value, char result[JS2C_DOUBLE_STR_MAX_LEN]);
+
 typedef struct json_write_state_s {
     char *buf;
     size_t capacity;

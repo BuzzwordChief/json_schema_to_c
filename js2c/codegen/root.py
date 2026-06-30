@@ -154,6 +154,36 @@ class RootGenerator:
             c_file.print_separator("end of js2c_write_builtins.h")
             c_file.print("")
 
+    def generate_double_conversion_hooks(self, c_file):
+        c_file.print_separator("Double conversion hooks")
+        c_file.print("js2c_str_to_double_fn_t js2c_str_to_double_hook = NULL;")
+        c_file.print("js2c_double_to_str_fn_t js2c_double_to_str_hook = NULL;")
+        c_file.print("")
+        c_file.print("void js2c_set_str_to_double(js2c_str_to_double_fn_t fn) {")
+        c_file.print("    js2c_str_to_double_hook = fn;")
+        c_file.print("}")
+        c_file.print("")
+        c_file.print("void js2c_set_double_to_str(js2c_double_to_str_fn_t fn) {")
+        c_file.print("    js2c_double_to_str_hook = fn;")
+        c_file.print("}")
+        c_file.print("")
+        c_file.print("void js2c_format_double(double value, char result[JS2C_DOUBLE_STR_MAX_LEN]) {")
+        with c_file.code_block():
+            c_file.print("if (js2c_double_to_str_hook != NULL) {")
+            c_file.print("    js2c_double_to_str_hook(value, result);")
+            c_file.print("    return;")
+            c_file.print("}")
+            c_file.print("if (value == (double)(int64_t)value) {")
+            c_file.print("    int n = snprintf(result, JS2C_DOUBLE_STR_MAX_LEN, \"%\" PRId64, (int64_t)value);")
+            c_file.print("    if (n > 0 && n < JS2C_DOUBLE_STR_MAX_LEN) {")
+            c_file.print("        return;")
+            c_file.print("    }")
+            c_file.print("}")
+            c_file.print("snprintf(result, JS2C_DOUBLE_STR_MAX_LEN, \"%.15g\", value);")
+            c_file.print("result[JS2C_DOUBLE_STR_MAX_LEN - 1] = '\\0';")
+        c_file.print("}")
+        c_file.print("")
+
     def generate_parser_c(self, c_file, h_file_name):
         c_file = CodeBlockPrinter(c_file)
 
@@ -169,6 +199,8 @@ class RootGenerator:
         else:
             self.manually_include_builtins(c_file)
         c_file.print('#include <stdio.h>')
+        c_file.print('#include <inttypes.h>')
+        self.generate_double_conversion_hooks(c_file)
         c_file.print("")
         c_file.print_separator("Generated parsers")
         c_file.print("")

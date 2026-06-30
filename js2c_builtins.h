@@ -45,6 +45,14 @@
 #define LOG_ERROR(position, ...)
 #endif
 
+#ifndef JS2C_DOUBLE_HOOKS_DECLARED
+#define JS2C_DOUBLE_HOOKS_DECLARED
+typedef int (*js2c_str_to_double_fn_t)(const char *str, double *out);
+typedef void (*js2c_double_to_str_fn_t)(double value, char result[25]);
+#endif
+
+extern js2c_str_to_double_fn_t js2c_str_to_double_hook;
+
 typedef struct parse_state_s {
     const char *json_string;
     const char *current_key;
@@ -233,11 +241,26 @@ static inline bool builtin_parse_double(parse_state_t *parse_state, double *out)
             return true;
         }
     }
-    char *end_char = NULL;
-    *out = strtod(start_char, &end_char);
-    if (end_char != parse_state->json_string + token->end) {
+    char num_buf[64];
+    const int num_len = token->end - token->start;
+    if (num_len <= 0 || num_len >= (int)sizeof(num_buf)) {
         LOG_ERROR(token->start, "Invalid floating point literal in '%s': %.*s", parse_state->current_key, CURRENT_STRING_FOR_ERROR(parse_state));
         return true;
+    }
+    memcpy(num_buf, start_char, (size_t)num_len);
+    num_buf[num_len] = '\0';
+    if (js2c_str_to_double_hook != NULL) {
+        if (!js2c_str_to_double_hook(num_buf, out)) {
+            LOG_ERROR(token->start, "Invalid floating point literal in '%s': %.*s", parse_state->current_key, CURRENT_STRING_FOR_ERROR(parse_state));
+            return true;
+        }
+    } else {
+        char *end_char = NULL;
+        *out = strtod(num_buf, &end_char);
+        if (end_char == num_buf || *end_char != '\0') {
+            LOG_ERROR(token->start, "Invalid floating point literal in '%s': %.*s", parse_state->current_key, CURRENT_STRING_FOR_ERROR(parse_state));
+            return true;
+        }
     }
     parse_state->current_token += 1;
     return false;
