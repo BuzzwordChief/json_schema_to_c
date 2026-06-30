@@ -113,6 +113,17 @@ static inline bool current_string_is(const parse_state_t *parse_state, const cha
     return memcmp(parse_state->json_string + token->start, s, token->end - token->start) == 0;
 }
 
+static inline bool current_primitive_is(const parse_state_t *parse_state, const char *s) {
+    const jsmntok_t *token = &parse_state->tokens[parse_state->current_token];
+    if (token->type != JSMN_PRIMITIVE) {
+        return false;
+    }
+    if (strlen(s) != (size_t)(token->end - token->start)) {
+        return false;
+    }
+    return memcmp(parse_state->json_string + token->start, s, token->end - token->start) == 0;
+}
+
 static inline bool builtin_check_current_string(parse_state_t *parse_state, int min_len, int max_len) {
     if (check_type(parse_state, JSMN_STRING)) {
         return true;

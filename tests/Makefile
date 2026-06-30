@@ -6,6 +6,7 @@ CFLAGS= \
 	-Wall \
 	-Werror \
 	-Wextra \
+	-Wno-unused-function \
 	-fsanitize=address \
 	-g
 
@@ -25,14 +26,15 @@ clean:
 
 # === Special test running and compilation rules ===
 
-other/args_and_settings.parser.c other/args_and_settings.parser.h &: \
-		other/args_and_settings.schema.json $(PARSER_SOURCE_FILES) \
-		other/c_postfix.inc
+other/args_and_settings.parser.h: other/args_and_settings.schema.json $(PARSER_SOURCE_FILES) other/c_postfix.inc
 	echo "other/args_and_settings: generating schema"
 	../json_schema_to_c.py \
 		--c-prefix /dev/null \
 		--c-postfix other/c_postfix.inc \
 		other/args_and_settings.schema.json other/args_and_settings.parser.c other/args_and_settings.parser.h
+
+other/args_and_settings.parser.c: other/args_and_settings.parser.h
+	@true
 
 other/cpp.o: other/cpp.cpp other/cpp.parser.h
 
@@ -41,10 +43,23 @@ other/cpp.compiled: other/cpp.o other/cpp.parser.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
 
 
+schema_complex/complex_schema.parser.h: schema_complex/complex_schema.json $(PARSER_SOURCE_FILES)
+	echo "schema_complex/complex_schema: generating schema"
+	../json_schema_to_c.py \
+		schema_complex/complex_schema.json \
+		schema_complex/complex_schema.parser.c \
+		schema_complex/complex_schema.parser.h
+
+schema_complex/complex_schema.parser.c: schema_complex/complex_schema.parser.h
+	@true
+
 # === General test running and compilation rules ===
-%.parser.c %.parser.h: %.schema.json $(PARSER_SOURCE_FILES)
+%.parser.h: %.schema.json $(PARSER_SOURCE_FILES)
 	echo "$*: generating schema"
 	../json_schema_to_c.py $*.schema.json $*.parser.c $*.parser.h
+
+%.parser.c: %.parser.h
+	@true
 
 
 %.compiled: %.c %.parser.c

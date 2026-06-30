@@ -137,3 +137,20 @@ class ArrayGenerator(Generator):
 
     def max_token_num(self):
         return self.maxItems * self.item_generator.max_token_num() + 1
+
+    def generate_writer_bodies(self, out_file):
+        self.item_generator.generate_writer_bodies(out_file)
+        out_file.print(
+            "static bool write_{}(json_write_state_t *state, const {} *in)"
+            .format(self.parser_name, self.c_type)
+        )
+        with out_file.code_block():
+            out_file.print("bool first = true;")
+            out_file.print("if (json_write_char(state, '[')) return true;")
+            with out_file.for_block("uint64_t i = 0; i < in->n; ++i"):
+                with out_file.if_block("!first"):
+                    out_file.print("if (json_write_char(state, ',')) return true;")
+                out_file.print("first = false;")
+                self.item_generator.generate_writer_call("&in->items[i]", out_file)
+            out_file.print("return json_write_char(state, ']');")
+        out_file.print("")

@@ -56,7 +56,8 @@ GeneratorInitParametersBase = namedtuple(
         'type_name',
         'settings',
         'generator_factory',
-        'type_cache'
+        'type_cache',
+        'public_writer',
     )
 )
 
@@ -74,6 +75,7 @@ class GeneratorInitParameters(GeneratorInitParametersBase):
             self.settings,
             self.generator_factory,
             self.type_cache,
+            False,
         )
 
 
@@ -97,12 +99,19 @@ class Generator(ABC):
         self.path_in_schema = parameters.path_in_schema
         self.settings = parameters.settings
         self.parser_name = parameters.parser_name
+        self.emit_public_writer = parameters.public_writer
 
         if self.js2cType is not None:
             self.type_name = self.js2cType
-        elif "$id" in schema and not parameters.path_in_schema:
-            # Remove starting # if present. Only use schema $id for the root type.
-            self.type_name = sanitize_schema_id(re.sub("^#", "", schema["$id"])) + "_t"
+        elif "$id" in schema:
+            schema_id = re.sub("^#", "", schema["$id"])
+            # Use local fragment ids (e.g. #def_obj) everywhere; sanitize URL ids only at root.
+            if '/' not in schema_id and ':' not in schema_id:
+                self.type_name = sanitize_schema_id(schema_id) + "_t"
+            elif not parameters.path_in_schema:
+                self.type_name = sanitize_schema_id(schema_id) + "_t"
+            else:
+                self.type_name = parameters.type_name
         else:
             self.type_name = parameters.type_name
 
@@ -121,6 +130,37 @@ class Generator(ABC):
 
     def generate_parser_bodies(self, out_file):
         pass
+
+    def json_writer_name(self):
+        return "json_write_{}".format(self.parser_name)
+
+    def generate_writer_declaration(self, out_file):
+        if not self.emit_public_writer:
+            return
+        out_file.print(
+            "bool {}(json_write_state_t *state, const {} *in);"
+            .format(self.json_writer_name(), self.c_type)
+        )
+
+    def generate_writer_bodies(self, out_file):
+        pass
+
+    def generate_public_writer_wrapper(self, out_file):
+        if not self.emit_public_writer:
+            return
+        out_file.print(
+            "bool {}(json_write_state_t *state, const {} *in)"
+            .format(self.json_writer_name(), self.c_type)
+        )
+        with out_file.code_block():
+            out_file.print("if (write_{}(state, in)) return true;".format(self.parser_name))
+            out_file.print("if (state->pos < state->capacity) state->buf[state->pos] = '\\0';")
+            out_file.print("return false;")
+        out_file.print("")
+
+    def generate_writer_call(self, in_expr, out_file):
+        with out_file.if_block("write_{}(state, {})".format(self.parser_name, in_expr)):
+            out_file.print("return true;")
 
     def has_default_value(self):
         return self.js2cDefault is not None

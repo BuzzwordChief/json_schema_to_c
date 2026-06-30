@@ -210,3 +210,29 @@ class ObjectGenerator(Generator):
 
     def max_token_num(self):
         return sum(1 + field_generator.max_token_num() for field_generator in self.fields.values()) + 1
+
+    def generate_writer_bodies(self, out_file):
+        for field_generator in self.fields.values():
+            field_generator.generate_writer_bodies(out_file)
+
+        out_file.print(
+            "static bool write_{}(json_write_state_t *state, const {} *in)"
+            .format(self.parser_name, self.c_type)
+        )
+        with out_file.code_block():
+            out_file.print("bool first = true;")
+            out_file.print("if (json_write_char(state, '{')) return true;")
+            for field_name, field_generator in self.fields.items():
+                with out_file.if_block("!first"):
+                    out_file.print("if (json_write_char(state, ',')) return true;")
+                out_file.print("first = false;")
+                out_file.print(
+                    "if (json_write_escaped_cstr(state, \"{}\")) return true;"
+                    .format(field_name)
+                )
+                out_file.print("if (json_write_char(state, ':')) return true;")
+                field_generator.generate_writer_call("&in->{}".format(field_name), out_file)
+            out_file.print("return json_write_char(state, '}');")
+        out_file.print("")
+
+

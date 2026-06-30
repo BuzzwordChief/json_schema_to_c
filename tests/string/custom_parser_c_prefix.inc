@@ -1,5 +1,8 @@
-#include <stdlib.h> 
-#include <byteswap.h>
+#include <stdlib.h>
+
+#ifndef bswap_64
+#define bswap_64(x) __builtin_bswap64(x)
+#endif
 
 bool big_endian_hex(const char* src, int size, uint64_t* out, const char** error){
     char * end_char = NULL;

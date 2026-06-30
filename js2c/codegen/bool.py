@@ -61,3 +61,12 @@ class BoolGenerator(Generator):
 
     def max_token_num(self):
         return 1
+
+    def generate_writer_bodies(self, out_file):
+        out_file.print(
+            "static bool write_{}(json_write_state_t *state, const bool *in)"
+            .format(self.parser_name)
+        )
+        with out_file.code_block():
+            out_file.print("return json_write_bool(state, *in);")
+        out_file.print("")

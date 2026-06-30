@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ahrs/ahrs.schema.json",
+  "title": "AHRS JSON-Lines Protokoll",
+  "description": "Schema fuer alle Nachrichten des AHRS-Protokolls. Eine Nachricht = ein JSON-Objekt pro Zeile (JSON Lines, durch '\\n' getrennt). Jede Nachricht ist typisiert (Feld 'type') und in sich abgeschlossen; es gibt keine Korrelations-ID und keinen generischen Antwort-Umschlag. Abfragen werden mit der jeweils passenden typisierten Nachricht beantwortet (z. B. cmd.identify -> identify). Aktionen wirken; Erfolg sieht der Host am resultierenden status, Ablehnungen kommen als typisierte error-Nachricht. Unbekannte Felder sind erlaubt (Vorwaertskompatibilitaet). Zeitstempel werden IMMER als Dezimalstring uebertragen, niemals als JSON-Zahl.",
+
+  "oneOf": [
+    { "$ref": "#/$defs/cmdIdentify" },
+    { "$ref": "#/$defs/cmdStatus" },
+    { "$ref": "#/$defs/cmdCalReference" },
+    { "$ref": "#/$defs/cmdCalStatus" },
+    { "$ref": "#/$defs/cmdTestStart" },
+    { "$ref": "#/$defs/cmdTestAbort" },
+    { "$ref": "#/$defs/cmdTestResult" },
+    { "$ref": "#/$defs/cmdLaunchSchedule" },
+    { "$ref": "#/$defs/cmdLaunchAbort" },
+    { "$ref": "#/$defs/cmdOutputRate" },
+    { "$ref": "#/$defs/cmdReset" },
+    { "$ref": "#/$defs/aidingWater" },
+    { "$ref": "#/$defs/identify" },
+    { "$ref": "#/$defs/status" },
+    { "$ref": "#/$defs/navData" },
+    { "$ref": "#/$defs/alignStatus" },
+    { "$ref": "#/$defs/testReport" },
+    { "$ref": "#/$defs/launchEvent" },
+    { "$ref": "#/$defs/error" }
+  ],
+
+  "$defs": {
+
+    "taiNs": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "TAI-Nanosekunden seit Epoche 1970 (PTP-Zeitbasis), als Dezimalstring. String, weil der Wert (~1.7e18) den sicheren Ganzzahlbereich von IEEE-754-double (2^53) ueberschreitet und als JSON-Zahl stillschweigend verfaelscht wuerde."
+    },
+
+    "vector3": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      },
+      "required": ["x", "y", "z"]
+    },
+
+    "quat": {
+      "type": "object",
+      "description": "Einheitsquaternion, Hamilton-Konvention, Skalar zuerst, Rotation Koerper->NED. Die Normierung wird vom Schema NICHT geprueft.",
+      "properties": {
+        "w": { "type": "number" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      },
+      "required": ["w", "x", "y", "z"]
+    },
+
+    "stateEnum":     { "type": "string", "enum": ["WARMUP", "READY", "TESTING", "NAVIGATING"] },
+    "ptpStateEnum":  { "type": "string", "enum": ["LOCKED", "HOLDOVER", "UNLOCKED"] },
+    "testStatusEnum":{ "type": "string", "enum": ["RUNNING", "PASS", "FAIL", "INCONCLUSIVE", "ABORTED"] },
+    "aidingEnum":    { "type": "string", "enum": ["none", "fresh", "stale"] },
+
+    "statusFlags": {
+      "type": "object",
+      "description": "Loesungs- und Gesundheitsflags als Booleans (kein Bitmaskenstring).",
+      "properties": {
+        "solution_valid": { "type": "boolean" },
+        "aligned":        { "type": "boolean" },
+        "ptp_locked":     { "type": "boolean" },
+        "aiding_fresh":   { "type": "boolean" },
+        "aiding_stale":   { "type": "boolean" },
+        "degraded":       { "type": "boolean" }
+      },
+      "required": ["solution_valid", "ptp_locked"]
+    },
+
+    "base": {
+      "type": "object",
+      "properties": {
+        "ts": { "$ref": "#/$defs/taiNs" }
+      },
+      "required": ["ts"]
+    },
+
+    "cmdIdentify": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Abfrage Identitaet. Beantwortet mit einer identify-Nachricht.",
+      "properties": { "type": { "const": "cmd.identify" } },
+      "required": ["type"]
+    },
+
+    "cmdStatus": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Sofortige Ausgabe eines status erbitten (statt auf den periodischen status zu warten).",
+      "properties": { "type": { "const": "cmd.status" } },
+      "required": ["type"]
+    },
+
+    "cmdCalReference": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Setzen der Kalibrierreferenz (nur im Zustand WARMUP). Treibt Kreiselkompassierung und Nivellierung. Bei Ablehnung folgt eine error-Nachricht.",
+      "properties": {
+        "type": { "const": "cmd.cal.reference" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "lat_deg":         { "type": "number", "minimum": -90,  "maximum": 90,  "description": "Geodaetische Breite, Dezimalgrad, WGS-84." },
+            "lon_deg":         { "type": "number", "minimum": -180, "maximum": 180, "description": "Geodaetische Laenge, Dezimalgrad, WGS-84." },
+            "heeling_deg":     { "type": "number", "minimum": -180, "maximum": 180, "description": "Kraengung (Rollwinkel), Grad." },
+            "inclination_deg": { "type": "number", "minimum": -90,  "maximum": 90,  "description": "Neigung (Nickwinkel), Grad." }
+          },
+          "required": ["lat_deg", "lon_deg", "heeling_deg", "inclination_deg"]
+        }
+      },
+      "required": ["type", "params"]
+    },
+
+    "cmdCalStatus": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Ausrichtungsstatus erbitten. Beantwortet mit einer align.status-Nachricht.",
+      "properties": { "type": { "const": "cmd.cal.status" } },
+      "required": ["type"]
+    },
+
+    "cmdTestStart": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Starten einer von fuenf Testroutinen (Zustand WARMUP oder READY). Fortschritt/Ergebnis kommen als test.report.",
+      "properties": {
+        "type": { "const": "cmd.test.start" },
+        "params": {
+          "type": "object",
+          "properties": { "test_id": { "type": "integer", "minimum": 1, "maximum": 5 } },
+          "required": ["test_id"]
+        }
+      },
+      "required": ["type", "params"]
+    },
+
+    "cmdTestAbort": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Abbruch der laufenden Testroutine.",
+      "properties": { "type": { "const": "cmd.test.abort" } },
+      "required": ["type"]
+    },
+
+    "cmdTestResult": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Letztes Testergebnis erbitten. Beantwortet mit einer test.report-Nachricht.",
+      "properties": { "type": { "const": "cmd.test.result" } },
+      "required": ["type"]
+    },
+
+    "cmdLaunchSchedule": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Planen des Starts zu einem zukuenftigen PTP-Zeitpunkt (Zustand READY). Erfolg sieht der Host am status (armed=true, t_launch, launch_id); Ablehnung kommt als error.",
+      "properties": {
+        "type": { "const": "cmd.launch.schedule" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "launch_id": { "type": "string", "description": "Eindeutige Kennung dieses Startversuchs; macht erneutes Senden idempotent." },
+            "t_launch":  { "$ref": "#/$defs/taiNs", "description": "Geplanter Startzeitpunkt (Integrationsbeginn), TAI-Nanosekunden." }
+          },
+          "required": ["launch_id", "t_launch"]
+        }
+      },
+      "required": ["type", "params"]
+    },
+
+    "cmdLaunchAbort": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Abbruch eines geplanten Starts.",
+      "properties": {
+        "type": { "const": "cmd.launch.abort" },
+        "params": {
+          "type": "object",
+          "properties": { "launch_id": { "type": "string" } },
+          "required": ["launch_id"]
+        }
+      },
+      "required": ["type", "params"]
+    },
+
+    "cmdOutputRate": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Setzen der Telemetrierate fuer nav.data (Hz).",
+      "properties": {
+        "type": { "const": "cmd.output.rate" },
+        "params": {
+          "type": "object",
+          "properties": { "rate_hz": { "type": "number", "exclusiveMinimum": 0, "maximum": 2000 } },
+          "required": ["rate_hz"]
+        }
+      },
+      "required": ["type", "params"]
+    },
+
+    "cmdReset": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Reset auf WARMUP. Durch Magic-Wert gegen versehentliche Ausloesung gesichert.",
+      "properties": {
+        "type": { "const": "cmd.reset" },
+        "params": {
+          "type": "object",
+          "properties": { "confirm": { "const": "RESET" } },
+          "required": ["confirm"]
+        }
+      },
+      "required": ["type", "params"]
+    },
+
+    "aidingWater": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Eingang: Geschwindigkeit durchs Wasser (Stuetzung). Einbahn-Nachricht Host->AHRS ohne Antwort. Nur im Zustand NAVIGATING verwendet.",
+      "properties": {
+        "type": { "const": "aiding.water" },
+        "velocity_mps": { "$ref": "#/$defs/vector3", "description": "Geschwindigkeitsvektor im Koerpersystem, m/s (x=vorne, y=Steuerbord, z=unten)." },
+        "valid": {
+          "type": "object",
+          "description": "Gueltigkeit je Komponente. Ein 1D-Fahrtlog setzt nur x=true.",
+          "properties": { "x": { "type": "boolean" }, "y": { "type": "boolean" }, "z": { "type": "boolean" } },
+          "required": ["x", "y", "z"]
+        },
+        "t_meas": { "$ref": "#/$defs/taiNs", "description": "Messzeitpunkt (Gueltigkeitszeit). Falls weggelassen, gilt der Empfangszeitpunkt." }
+      },
+      "required": ["type", "velocity_mps", "valid"]
+    },
+
+    "identify": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Identitaet (Antwort auf cmd.identify). Erfuellt die Abfrage von Seriennummer, Hardware-Version und Projektnummer.",
+      "properties": {
+        "type":        { "const": "identify" },
+        "serial":      { "type": "string", "description": "Seriennummer." },
+        "hw_version":  { "type": "string", "description": "Hardware-Version." },
+        "project":     { "type": "string", "description": "Projektnummer." },
+        "fw_version":  { "type": "string", "description": "Firmware-Version." }
+      },
+      "required": ["type", "serial", "hw_version", "project", "fw_version"]
+    },
+
+    "error": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Fehler-/Ablehnungsereignis. Wird gesendet, wenn ein Befehl abgelehnt wird oder ein Fehler auftritt. Ersetzt die frueher im rsp gebuendelte Fehlersignalisierung.",
+      "properties": {
+        "type":    { "const": "error" },
+        "code":    { "type": "integer", "description": "Fehlercode (siehe Spezifikation, Abschnitt Fehlercodes)." },
+        "message": { "type": "string",  "description": "Klartextbeschreibung." },
+        "context": { "type": "string",  "description": "Optional: 'type' des ausloesenden Befehls, damit die Ablehnung ohne Korrelations-ID zuordenbar ist." }
+      },
+      "required": ["type", "code", "message"]
+    },
+
+    "navData": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Navigationsdatensatz (hohe Rate, Zustand NAVIGATING). ts ist die Gueltigkeitszeit dieser Abtastung.",
+      "properties": {
+        "type":                 { "const": "nav.data" },
+        "seq":                  { "type": "integer", "minimum": 0, "description": "Folgenummer dieses Stroms zur Verlusterkennung." },
+        "state":                { "$ref": "#/$defs/stateEnum" },
+        "imu_counter":          { "type": "integer", "minimum": 0, "description": "Frei laufender IMU-Abtastzaehler; erkennt verlorene IMU-Abtastungen." },
+        "t_since_launch_s":     { "type": "number", "description": "Sekunden seit Startzeitpunkt (Komfortfeld). Massgeblich ist ts." },
+        "course_deg":           { "type": "number", "description": "Kurs (Gierwinkel), Grad, 0..360." },
+        "heeling_deg":          { "type": "number", "description": "Kraengung (Rollwinkel), Grad." },
+        "inclination_deg":      { "type": "number", "description": "Neigung (Nickwinkel), Grad." },
+        "heeling_rate_dps":     { "type": "number", "description": "Koerper-Drehrate um die Kraengungsachse (X), Grad/s." },
+        "inclination_rate_dps": { "type": "number", "description": "Koerper-Drehrate um die Neigungsachse (Y), Grad/s." },
+        "course_rate_dps":      { "type": "number", "description": "Koerper-Drehrate um die Kursachse (Z), Grad/s." },
+        "accel_mps2":           { "$ref": "#/$defs/vector3", "description": "Spezifische Kraft (Beschleunigungsmesser) im Koerpersystem, m/s^2, inklusive Schwerereaktion." },
+        "quat":                 { "$ref": "#/$defs/quat" },
+        "status":               { "$ref": "#/$defs/statusFlags" }
+      },
+      "required": [
+        "type", "seq", "imu_counter", "t_since_launch_s",
+        "course_deg", "heeling_deg", "inclination_deg",
+        "heeling_rate_dps", "inclination_rate_dps", "course_rate_dps",
+        "accel_mps2", "quat", "status"
+      ]
+    },
+
+    "alignStatus": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Ausrichtungs-/Alignmentstatus (Zustand WARMUP; auch Antwort auf cmd.cal.status).",
+      "properties": {
+        "type":              { "const": "align.status" },
+        "state":             { "$ref": "#/$defs/stateEnum" },
+        "progress_pct":      { "type": "number", "minimum": 0, "maximum": 100 },
+        "quality":           { "type": "number", "minimum": 0, "maximum": 1, "description": "Normierter Guetewert 0..1 (1 = beste)." },
+        "heading_est_deg":   { "type": "number" },
+        "heading_sigma_deg": { "type": "number", "minimum": 0, "description": "1-Sigma-Unsicherheit des Kurses, Grad." },
+        "gyro_bias_dps":     { "$ref": "#/$defs/vector3", "description": "Geschaetzte Kreiselbias, Grad/s." },
+        "converged":         { "type": "boolean", "description": "true, sobald die Ausrichtung abgeschlossen ist (Uebergang nach READY)." }
+      },
+      "required": ["type", "progress_pct", "converged"]
+    },
+
+    "testReport": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Fortschritt und Ergebnis einer Testroutine (Zustand TESTING; auch Antwort auf cmd.test.result).",
+      "properties": {
+        "type":         { "const": "test.report" },
+        "test_id":      { "type": "integer", "minimum": 1, "maximum": 5 },
+        "status":       { "$ref": "#/$defs/testStatusEnum" },
+        "progress_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "values":       { "type": "array", "items": { "type": "number" }, "description": "Testspezifische Messwerte." },
+        "message":      { "type": "string", "description": "Optionaler Klartexthinweis." }
+      },
+      "required": ["type", "test_id", "status"]
+    },
+
+    "launchEvent": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Einmalige Nachricht im Startzeitpunkt. ts entspricht dem realisierten Startzeitpunkt.",
+      "properties": {
+        "type":                  { "const": "launch.event" },
+        "launch_id":             { "type": "string" },
+        "t_launch":              { "$ref": "#/$defs/taiNs", "description": "Realisierter Startzeitpunkt (Integrationsursprung), TAI-Nanosekunden." },
+        "imu_counter_at_launch": { "type": "integer", "minimum": 0 },
+        "source":                { "type": "string", "enum": ["scheduled", "hardware"] }
+      },
+      "required": ["type", "t_launch"]
+    },
+
+    "status": {
+      "allOf": [ { "$ref": "#/$defs/base" } ],
+      "type": "object",
+      "description": "Periodischer Statusbericht (Standard 1 Hz, bei Aenderung und auf cmd.status). Dient zugleich als beobachtbare Bestaetigung fuer Aktionen.",
+      "properties": {
+        "type":          { "const": "status" },
+        "state":         { "$ref": "#/$defs/stateEnum" },
+        "ptp_state":     { "$ref": "#/$defs/ptpStateEnum" },
+        "ptp_offset_ns": { "type": "integer", "description": "Geschaetzter Taktoffset zum Master, Nanosekunden (passt in den sicheren Ganzzahlbereich)." },
+        "aligned":       { "type": "boolean" },
+        "armed":         { "type": "boolean", "description": "true, wenn ein Start geplant/scharf ist." },
+        "launch_id":     { "anyOf": [ { "type": "string" }, { "type": "null" } ], "description": "Kennung des geplanten Starts oder null. Erlaubt dem Host, die Annahme seines Startbefehls zu bestaetigen." },
+        "t_launch":      { "anyOf": [ { "$ref": "#/$defs/taiNs" }, { "type": "null" } ], "description": "Geplanter/realisierter Startzeitpunkt oder null." },
+        "active_test":   { "type": "integer", "minimum": 0, "maximum": 5, "description": "0 = kein Test, sonst laufende Test-ID." },
+        "aiding":        { "$ref": "#/$defs/aidingEnum" },
+        "faults":        { "type": "array", "items": { "type": "string" }, "description": "Liste aktuell aktiver Fehlerkennungen (Momentaufnahme; einzelne Fehlerereignisse kommen als error)." },
+        "imu_temp_c":    { "type": "number", "description": "IMU-Temperatur, Grad Celsius." }
+      },
+      "required": ["type", "state", "ptp_state"]
+    }
+
+  }
+}

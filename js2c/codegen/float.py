@@ -82,3 +82,21 @@ class FloatGenerator(Generator):
 
     def max_token_num(self):
         return 1
+
+    def generate_writer_bodies(self, out_file):
+        out_file.print(
+            "static bool write_{}(json_write_state_t *state, const double *in)"
+            .format(self.parser_name)
+        )
+        with out_file.code_block():
+            out_file.print("char tmp[32];")
+            out_file.print("int n;")
+            out_file.print("if (*in == (double)(int64_t)(*in)) {")
+            with out_file.indent():
+                out_file.print("return json_write_int64_dec(state, (int64_t)(*in));")
+            out_file.print("}")
+            out_file.print("n = snprintf(tmp, sizeof(tmp), \"%.15g\", *in);")
+            with out_file.if_block("n <= 0 || (size_t)n >= sizeof(tmp)"):
+                out_file.print("return true;")
+            out_file.print("return json_write_bytes(state, tmp, (size_t)n);")
+        out_file.print("")

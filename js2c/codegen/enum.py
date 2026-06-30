@@ -119,3 +119,20 @@ class EnumGenerator(Generator):
 
     def max_token_num(self):
         return 1
+
+    def generate_writer_bodies(self, out_file):
+        out_file.print(
+            "static bool write_{}(json_write_state_t *state, const {} *in)"
+            .format(self.parser_name, self.c_type)
+        )
+        with out_file.code_block():
+            for enum_label in self.enum:
+                with out_file.if_block("*in == {}".format(self.convert_enum_label(enum_label))):
+                    out_file.print(
+                        "return json_write_escaped_cstr(state, \"{}\");"
+                        .format(enum_label)
+                    )
+                out_file.print("else")
+            with out_file.code_block():
+                out_file.print("return true;")
+        out_file.print("")

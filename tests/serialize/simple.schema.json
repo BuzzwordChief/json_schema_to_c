@@ -1,0 +1,22 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "root",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "count", "ok"],
+    "properties": {
+        "name": {
+            "type": "string",
+            "maxLength": 16,
+            "default": "test"
+        },
+        "count": {
+            "type": "integer",
+            "default": 0
+        },
+        "ok": {
+            "type": "boolean",
+            "default": true
+        }
+    }
+}

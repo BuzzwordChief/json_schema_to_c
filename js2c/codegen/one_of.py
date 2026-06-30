@@ -83,7 +83,9 @@ class OneOfGenerator(Generator):
 
             variant_generator = parameters.generator_factory.get_generator_for(
                 variant_schema,
-                parameters.with_suffix("oneOf[{}]".format(i), self.type_name, variant_label),
+                parameters.with_suffix(
+                    "oneOf[{}]".format(i), self.type_name, variant_label
+                )._replace(public_writer=True),
             )
             self.variants.append((variant_label, variant_generator))
 
@@ -155,3 +157,12 @@ class OneOfGenerator(Generator):
 
     def max_token_num(self):
         return max(variant_generator.max_token_num() for _, variant_generator in self.variants)
+
+    def generate_writer_bodies(self, out_file):
+        for _, variant_generator in self.variants:
+            variant_generator.generate_writer_bodies(out_file)
+            variant_generator.generate_public_writer_wrapper(out_file)
+
+    def generate_writer_declaration(self, out_file):
+        for _, variant_generator in self.variants:
+            variant_generator.generate_writer_declaration(out_file)

@@ -157,6 +157,26 @@ class StringGenerator(Generator):
     def max_token_num(self):
         return 1
 
+    def generate_writer_bodies(self, out_file):
+        if self.js2cParseFunction is not None:
+            out_file.print(
+                "static bool write_{}(json_write_state_t *state, const {} *in)"
+                .format(self.parser_name, self.c_type)
+            )
+            with out_file.code_block():
+                out_file.print("(void)state;")
+                out_file.print("(void)in;")
+                out_file.print("return true;")
+            out_file.print("")
+            return
+        out_file.print(
+            "static bool write_{}(json_write_state_t *state, const {} *in)"
+            .format(self.parser_name, self.c_type)
+        )
+        with out_file.code_block():
+            out_file.print("return json_write_escaped_cstr(state, *in);")
+        out_file.print("")
+
 
 class NullableType(CType):
     def __init__(self, type_name, description, inner_type):
@@ -215,17 +235,28 @@ class StringOrNullAnyOfGenerator(Generator):
                 non_null_count += 1
         return has_null and non_null_count == 1
 
-    def generate_parser_call(self, out_var_name, out_file):
-        with out_file.if_block("check_type(parse_state, JSMN_NULL)"):
-            out_file.print("{}->is_null = true;".format(out_var_name))
-            out_file.print("parse_state->current_token += 1;")
-            out_file.print("return false;")
+    @classmethod
+    def nullable_member(cls, out_var_name, member):
+        return "({})->{}".format(out_var_name, member)
 
-        out_file.print("{}->is_null = false;".format(out_var_name))
-        self.inner_generator.generate_parser_call(
-            "&{}->value".format(out_var_name),
-            out_file
-        )
+    def generate_parser_call(self, out_var_name, out_file):
+        with out_file.if_block(
+            "!check_type(parse_state, JSMN_PRIMITIVE) && "
+            "current_primitive_is(parse_state, \"null\")"
+        ):
+            out_file.print(
+                "{} = true;".format(self.nullable_member(out_var_name, "is_null"))
+            )
+            out_file.print("parse_state->current_token += 1;")
+        out_file.print("else")
+        with out_file.code_block():
+            out_file.print(
+                "{} = false;".format(self.nullable_member(out_var_name, "is_null"))
+            )
+            self.inner_generator.generate_parser_call(
+                "&" + self.nullable_member(out_var_name, "value"),
+                out_file
+            )
 
     def generate_parser_bodies(self, out_file):
         self.inner_generator.generate_parser_bodies(out_file)
@@ -234,11 +265,26 @@ class StringOrNullAnyOfGenerator(Generator):
         return self.inner_generator.has_default_value()
 
     def generate_set_default_value(self, out_var_name, out_file):
-        out_file.print("{}->is_null = false;".format(out_var_name))
+        out_file.print(
+            "{} = false;".format(self.nullable_member(out_var_name, "is_null"))
+        )
         self.inner_generator.generate_set_default_value(
-            "{}->value".format(out_var_name),
+            self.nullable_member(out_var_name, "value"),
             out_file
         )
 
     def max_token_num(self):
         return self.inner_generator.max_token_num()
+
+    def generate_writer_bodies(self, out_file):
+        self.inner_generator.generate_writer_bodies(out_file)
+        out_file.print(
+            "static bool write_{}(json_write_state_t *state, const {} *in)"
+            .format(self.parser_name, self.c_type)
+        )
+        with out_file.code_block():
+            with out_file.if_block("in->is_null"):
+                out_file.print("return json_write_null(state);")
+            self.inner_generator.generate_writer_call("&in->value", out_file)
+            out_file.print("return false;")
+        out_file.print("")

@@ -29,6 +29,7 @@ from .code_block_printer import CodeBlockPrinter
 
 from .generator_factory import GeneratorFactory
 from .type_cache import TypeCache
+from .one_of import OneOfGenerator
 from .base import GeneratorInitParameters, SchemaError, sanitize_schema_id
 
 
@@ -57,6 +58,7 @@ class RootGenerator:
                 settings,
                 GeneratorFactory,
                 TypeCache(),
+                'oneOf' not in schema,
             )
         )
         self.name = schema_name
@@ -88,6 +90,7 @@ class RootGenerator:
         h_file.print("#ifndef {}".format(header_guard_name))
         h_file.print("#define {}".format(header_guard_name))
 
+        h_file.print("#include <stddef.h>")
         h_file.print("#include <stdint.h>")
         h_file.print("#include <stdbool.h>")
 
@@ -102,6 +105,10 @@ class RootGenerator:
         h_file.print_separator("Generated type declarations")
         self.root_generator.c_type.generate_type_declaration(h_file)
         h_file.print("bool json_parse_{}(const char *json_string, {} *out);".format(self.name, self.root_generator.c_type))
+
+        self.manually_include_write_builtins(h_file)
+        h_file.print_separator("Generated JSON writer declarations")
+        self.root_generator.generate_writer_declaration(h_file)
 
         h_file.print("#ifdef __cplusplus")
         h_file.print("}")
@@ -139,6 +146,14 @@ class RootGenerator:
             c_file.print_separator("end of js2c_builtins.h")
             c_file.print("")
 
+    @classmethod
+    def manually_include_write_builtins(cls, c_file):
+        with open(os.path.join(DIR_OF_THIS_FILE, 'js2c_write_builtins.h'), encoding='utf-8') as write_builtins_file:
+            c_file.print_separator("js2c_write_builtins.h")
+            c_file.write(write_builtins_file.read())
+            c_file.print_separator("end of js2c_write_builtins.h")
+            c_file.print("")
+
     def generate_parser_c(self, c_file, h_file_name):
         c_file = CodeBlockPrinter(c_file)
 
@@ -153,6 +168,8 @@ class RootGenerator:
             c_file.print('#include "{}"'.format(self.settings.include_external_builtins_file))
         else:
             self.manually_include_builtins(c_file)
+        c_file.print('#include <stdio.h>')
+        c_file.print("")
         c_file.print_separator("Generated parsers")
         c_file.print("")
         self.root_generator.generate_parser_bodies(c_file)
@@ -161,6 +178,12 @@ class RootGenerator:
         if self.settings.allow_additional_properties is not None:
             max_token_num += self.settings.allow_additional_properties
         self.generate_root_parser(c_file, max_token_num)
+
+        c_file.print_separator("Generated JSON writers")
+        c_file.print("")
+        self.root_generator.generate_writer_bodies(c_file)
+        if not isinstance(self.root_generator, OneOfGenerator):
+            self.root_generator.generate_public_writer_wrapper(c_file)
 
         if self.settings.c_postfix_file:
             c_file.print_separator("User-added postfix")
