@@ -39,7 +39,7 @@
 #define JSMN_STRICT
 #endif
 
-#include "jsmn.h"
+#include "jsmn/jsmn.h"
 
 #ifndef LOG_ERROR
 #define LOG_ERROR(position, ...)

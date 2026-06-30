@@ -132,10 +132,10 @@ class RootGenerator:
 
     @classmethod
     def manually_include_builtins(cls, c_file):
-        with open(os.path.join(DIR_OF_THIS_FILE, 'js2c_builtins.h'), encoding='utf-8') as builtins_file:
+        with open(os.path.join(DIR_OF_THIS_FILE, '..', '..', 'js2c_builtins.h'), encoding='utf-8') as builtins_file:
             c_file.print_separator("js2c_builtins.h")
             builtins_file_contents = builtins_file.read()
-            jsmn_include_string = '#include "jsmn.h"\n'
+            jsmn_include_string = '#include "jsmn/jsmn.h"\n'
             split_pos = builtins_file_contents.index(jsmn_include_string)
             if split_pos < 0:
                 raise ValueError("{} not found in builtins file".format(jsmn_include_string))
