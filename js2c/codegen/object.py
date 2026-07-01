@@ -234,5 +234,3 @@ class ObjectGenerator(Generator):
                 field_generator.generate_writer_call("&in->{}".format(field_name), out_file)
             out_file.print("return json_write_char(state, '}');")
         out_file.print("")
-
-

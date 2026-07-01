@@ -23,6 +23,8 @@
 # SOFTWARE.
 #
 
+# pylint: disable=deprecated-class
+
 import argparse
 import os
 import sys
