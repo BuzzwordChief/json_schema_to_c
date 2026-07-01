@@ -25,7 +25,12 @@
 from collections import OrderedDict
 
 from .base import Generator, CType, SchemaError
-from .writer_emit import begin_public_writer, emit_err, emit_lit, end_public_writer
+from .writer_emit import (
+    WORST_CASE_NULL,
+    emit_add_escaped_cstr_len,
+    emit_escaped_cstr_write,
+    emit_err,
+)
 
 
 NESTED_DEFAULT_MAX_STRING_LENGTH = 256
@@ -158,12 +163,19 @@ class StringGenerator(Generator):
     def max_token_num(self):
         return 1
 
-    def emit_writer_inline(self, in_expr, out_file):
+    def emit_need_computation(self, in_expr, out_file):
         if self.js2cParseFunction is not None:
-            out_file.print("(void){};".format(in_expr))
-            out_file.print("err = true;")
+            out_file.print("need = SIZE_MAX;")
             return
-        emit_err(out_file, "json_write_inline_escaped_cstr(state, {})".format(in_expr))
+        emit_add_escaped_cstr_len(out_file, in_expr)
+
+    def emit_writer_inline(self, in_expr, out_file, fast=False):
+        if self.js2cParseFunction is not None:
+            if not fast:
+                out_file.print("(void){};".format(in_expr))
+                out_file.print("err = true;")
+            return
+        emit_escaped_cstr_write(out_file, in_expr, fast=fast)
 
     def generate_writer_bodies(self, out_file):
         self.generate_leaf_writer_bodies(out_file)
@@ -273,19 +285,30 @@ class StringOrNullAnyOfGenerator(Generator):
             return "in->{}".format(member)
         return "{}.{}".format(in_expr, member)
 
-    def emit_writer_inline(self, in_expr, out_file):
+    def writer_static_worst_case(self):
+        return max(WORST_CASE_NULL, self.inner_generator.writer_static_worst_case())
+
+    def emit_need_computation(self, in_expr, out_file):
+        # Always precompute inner need (and string length vars) so slow-path writes
+        # can reuse them. Overestimates when is_null, which only skips fast path.
+        self.inner_generator.emit_need_computation(
+            self.nullable_member_path(in_expr, "value"),
+            out_file,
+        )
+
+    def emit_writer_inline(self, in_expr, out_file, fast=False):
         with out_file.if_block(self.nullable_member_path(in_expr, "is_null")):
-            emit_lit(out_file, "null")
+            if fast:
+                out_file.print("json_write_null_fast(state);")
+            else:
+                emit_err(out_file, "json_write_null(state)")
         out_file.print("else")
         with out_file.code_block():
             self.inner_generator.emit_writer_inline(
                 self.nullable_member_path(in_expr, "value"),
                 out_file,
+                fast=fast,
             )
 
     def generate_writer_bodies(self, out_file):
-        if not self.emit_public_writer:
-            return
-        begin_public_writer(out_file, self.json_writer_name(), self.c_type)
-        self.emit_writer_inline("in", out_file)
-        end_public_writer(out_file)
+        self.generate_dual_path_writer(out_file)

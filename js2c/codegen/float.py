@@ -23,7 +23,7 @@
 # SOFTWARE.
 #
 from .base import Generator, CType
-from .writer_emit import emit_err
+from .writer_emit import WORST_CASE_DOUBLE, emit_err
 
 
 class FloatGenerator(Generator):
@@ -84,8 +84,14 @@ class FloatGenerator(Generator):
     def max_token_num(self):
         return 1
 
-    def emit_writer_inline(self, in_expr, out_file):
-        emit_err(out_file, "json_write_inline_double(state, {})".format(in_expr))
+    def writer_static_worst_case(self):
+        return WORST_CASE_DOUBLE
+
+    def emit_writer_inline(self, in_expr, out_file, fast=False):
+        if fast:
+            out_file.print("json_write_double_fast(state, {});".format(in_expr))
+        else:
+            emit_err(out_file, "json_write_inline_double(state, {})".format(in_expr))
 
     def generate_writer_bodies(self, out_file):
         self.generate_leaf_writer_bodies(out_file)

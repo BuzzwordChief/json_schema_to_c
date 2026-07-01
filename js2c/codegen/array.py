@@ -26,9 +26,7 @@ from .base import Generator, CType, SchemaError
 from .writer_emit import (
     array_item_path,
     array_length_path,
-    begin_public_writer,
     emit_lit,
-    end_public_writer,
 )
 
 
@@ -145,20 +143,31 @@ class ArrayGenerator(Generator):
     def max_token_num(self):
         return self.maxItems * self.item_generator.max_token_num() + 1
 
-    def emit_writer_inline(self, in_expr, out_file):
-        emit_lit(out_file, "[")
-        with out_file.for_block("uint64_t i = 0; i < {}; ++i".format(array_length_path(in_expr))):
-            with out_file.if_block("i > 0"):
-                emit_lit(out_file, ",")
-            self.item_generator.emit_writer_inline(
+    def writer_static_worst_case(self):
+        return 2
+
+    def emit_need_computation(self, in_expr, out_file):
+        n_path = array_length_path(in_expr)
+        out_file.print(
+            "need += 2 + ({n} > 0 ? {n} - 1 : 0);".format(n=n_path)
+        )
+        with out_file.for_block("uint64_t i = 0; i < {}; ++i".format(n_path)):
+            self.item_generator.emit_need_computation(
                 array_item_path(in_expr, "i"),
                 out_file,
             )
-        emit_lit(out_file, "]")
+
+    def emit_writer_inline(self, in_expr, out_file, fast=False):
+        emit_lit(out_file, "[", fast=fast)
+        with out_file.for_block("uint64_t i = 0; i < {}; ++i".format(array_length_path(in_expr))):
+            with out_file.if_block("i > 0"):
+                emit_lit(out_file, ",", fast=fast)
+            self.item_generator.emit_writer_inline(
+                array_item_path(in_expr, "i"),
+                out_file,
+                fast=fast,
+            )
+        emit_lit(out_file, "]", fast=fast)
 
     def generate_writer_bodies(self, out_file):
-        if not self.emit_public_writer:
-            return
-        begin_public_writer(out_file, self.json_writer_name(), self.c_type)
-        self.emit_writer_inline("in", out_file)
-        end_public_writer(out_file)
+        self.generate_dual_path_writer(out_file)

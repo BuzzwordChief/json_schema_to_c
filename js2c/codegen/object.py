@@ -26,11 +26,10 @@ import collections
 
 from .base import Generator, CType, SchemaError
 from .writer_emit import (
-    begin_public_writer,
     emit_key_prefix,
     emit_lit,
-    end_public_writer,
     object_field_path,
+    object_key_prefix,
 )
 
 
@@ -218,18 +217,29 @@ class ObjectGenerator(Generator):
     def max_token_num(self):
         return sum(1 + field_generator.max_token_num() for field_generator in self.fields.values()) + 1
 
-    def emit_writer_inline(self, in_expr, out_file):
+    def writer_static_worst_case(self):
+        total = 1
         for field_index, (field_name, field_generator) in enumerate(self.fields.items()):
-            emit_key_prefix(out_file, field_name, field_index == 0)
-            field_generator.emit_writer_inline(
+            total += len(object_key_prefix(field_name, field_index == 0))
+            total += field_generator.writer_static_worst_case()
+        return total
+
+    def emit_need_computation(self, in_expr, out_file):
+        for field_name, field_generator in self.fields.items():
+            field_generator.emit_need_computation(
                 object_field_path(in_expr, field_name),
                 out_file,
             )
-        emit_lit(out_file, "}")
+
+    def emit_writer_inline(self, in_expr, out_file, fast=False):
+        for field_index, (field_name, field_generator) in enumerate(self.fields.items()):
+            emit_key_prefix(out_file, field_name, field_index == 0, fast=fast)
+            field_generator.emit_writer_inline(
+                object_field_path(in_expr, field_name),
+                out_file,
+                fast=fast,
+            )
+        emit_lit(out_file, "}", fast=fast)
 
     def generate_writer_bodies(self, out_file):
-        if not self.emit_public_writer:
-            return
-        begin_public_writer(out_file, self.json_writer_name(), self.c_type)
-        self.emit_writer_inline("in", out_file)
-        end_public_writer(out_file)
+        self.generate_dual_path_writer(out_file)

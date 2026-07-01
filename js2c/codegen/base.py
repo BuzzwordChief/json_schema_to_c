@@ -26,7 +26,7 @@ from abc import ABC, abstractmethod
 from collections import namedtuple
 import re
 
-from .writer_emit import begin_public_writer, end_public_writer
+from .writer_emit import generate_dual_path_writer
 
 
 def sanitize_schema_id(schema_id):
@@ -147,15 +147,32 @@ class Generator(ABC):
     def generate_writer_bodies(self, out_file):
         pass
 
-    def emit_writer_inline(self, in_expr, out_file):
+    def emit_writer_inline(self, in_expr, out_file, fast=False):
         pass
 
-    def generate_leaf_writer_bodies(self, out_file, value_expr="*in"):
+    def emit_need_computation(self, in_expr, out_file):
+        pass
+
+    def writer_static_worst_case(self):
+        return 0
+
+    def generate_dual_path_writer(self, out_file, in_expr="in"):
         if not self.emit_public_writer:
             return
-        begin_public_writer(out_file, self.json_writer_name(), self.c_type)
-        self.emit_writer_inline(value_expr, out_file)
-        end_public_writer(out_file)
+        def emit_preamble(out_file):
+            out_file.print("size_t need = {};".format(self.writer_static_worst_case()))
+            self.emit_need_computation(in_expr, out_file)
+
+        generate_dual_path_writer(
+            out_file,
+            self.json_writer_name(),
+            self.c_type,
+            emit_preamble,
+            lambda f, fast=False: self.emit_writer_inline(in_expr, f, fast=fast),
+        )
+
+    def generate_leaf_writer_bodies(self, out_file, value_expr="*in"):
+        self.generate_dual_path_writer(out_file, value_expr)
 
     def has_default_value(self):
         return self.js2cDefault is not None

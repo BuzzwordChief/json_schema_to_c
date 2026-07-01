@@ -25,7 +25,7 @@
 from abc import abstractmethod
 
 from .base import Generator, CType, SchemaError
-from .writer_emit import emit_err
+from .writer_emit import WORST_CASE_INT64, WORST_CASE_QUOTED_INT64, emit_err
 
 
 class IntegerType(CType):
@@ -137,8 +137,16 @@ class IntegerGeneratorBase(Generator):
     def max_token_num(self):
         return 1
 
-    def emit_writer_inline(self, in_expr, out_file):
-        if self.c_type.is_unsigned():
+    def writer_static_worst_case(self):
+        return WORST_CASE_INT64
+
+    def emit_writer_inline(self, in_expr, out_file, fast=False):
+        if fast:
+            if self.c_type.is_unsigned():
+                out_file.print("json_write_uint64_dec_fast(state, {});".format(in_expr))
+            else:
+                out_file.print("json_write_int64_dec_fast(state, {});".format(in_expr))
+        elif self.c_type.is_unsigned():
             emit_err(out_file, "json_write_inline_uint64_dec(state, {})".format(in_expr))
         else:
             emit_err(out_file, "json_write_inline_int64_dec(state, {})".format(in_expr))
@@ -217,8 +225,16 @@ class NumericStringGenerator(IntegerGenerator):
             return False
         return schema.get('pattern') in cls.UNSIGNED_PATTERNS or schema.get('pattern') in cls.SIGNED_PATTERNS
 
-    def emit_writer_inline(self, in_expr, out_file):
-        if self.c_type.is_unsigned():
+    def writer_static_worst_case(self):
+        return WORST_CASE_QUOTED_INT64
+
+    def emit_writer_inline(self, in_expr, out_file, fast=False):
+        if fast:
+            if self.c_type.is_unsigned():
+                out_file.print("json_write_quoted_uint64_dec_fast(state, {});".format(in_expr))
+            else:
+                out_file.print("json_write_quoted_int64_dec_fast(state, {});".format(in_expr))
+        elif self.c_type.is_unsigned():
             emit_err(out_file, "json_write_inline_quoted_uint64_dec(state, {})".format(in_expr))
         else:
             emit_err(out_file, "json_write_inline_quoted_int64_dec(state, {})".format(in_expr))
