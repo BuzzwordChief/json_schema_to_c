@@ -25,6 +25,13 @@
 import collections
 
 from .base import Generator, CType, SchemaError
+from .writer_emit import (
+    begin_public_writer,
+    emit_key_prefix,
+    emit_lit,
+    end_public_writer,
+    object_field_path,
+)
 
 
 class ObjectType(CType):
@@ -211,26 +218,18 @@ class ObjectGenerator(Generator):
     def max_token_num(self):
         return sum(1 + field_generator.max_token_num() for field_generator in self.fields.values()) + 1
 
-    def generate_writer_bodies(self, out_file):
-        for field_generator in self.fields.values():
-            field_generator.generate_writer_bodies(out_file)
+    def emit_writer_inline(self, in_expr, out_file):
+        for field_index, (field_name, field_generator) in enumerate(self.fields.items()):
+            emit_key_prefix(out_file, field_name, field_index == 0)
+            field_generator.emit_writer_inline(
+                object_field_path(in_expr, field_name),
+                out_file,
+            )
+        emit_lit(out_file, "}")
 
-        out_file.print(
-            "static bool write_{}(json_write_state_t *state, const {} *in)"
-            .format(self.parser_name, self.c_type)
-        )
-        with out_file.code_block():
-            out_file.print("bool first = true;")
-            out_file.print("if (json_write_char(state, '{')) return true;")
-            for field_name, field_generator in self.fields.items():
-                with out_file.if_block("!first"):
-                    out_file.print("if (json_write_char(state, ',')) return true;")
-                out_file.print("first = false;")
-                out_file.print(
-                    "if (json_write_escaped_cstr(state, \"{}\")) return true;"
-                    .format(field_name)
-                )
-                out_file.print("if (json_write_char(state, ':')) return true;")
-                field_generator.generate_writer_call("&in->{}".format(field_name), out_file)
-            out_file.print("return json_write_char(state, '}');")
-        out_file.print("")
+    def generate_writer_bodies(self, out_file):
+        if not self.emit_public_writer:
+            return
+        begin_public_writer(out_file, self.json_writer_name(), self.c_type)
+        self.emit_writer_inline("in", out_file)
+        end_public_writer(out_file)

@@ -23,6 +23,13 @@
 # SOFTWARE.
 #
 from .base import Generator, CType, SchemaError
+from .writer_emit import (
+    array_item_path,
+    array_length_path,
+    begin_public_writer,
+    emit_lit,
+    end_public_writer,
+)
 
 
 NESTED_DEFAULT_MAX_ARRAY_ITEMS = 64
@@ -138,19 +145,20 @@ class ArrayGenerator(Generator):
     def max_token_num(self):
         return self.maxItems * self.item_generator.max_token_num() + 1
 
+    def emit_writer_inline(self, in_expr, out_file):
+        emit_lit(out_file, "[")
+        with out_file.for_block("uint64_t i = 0; i < {}; ++i".format(array_length_path(in_expr))):
+            with out_file.if_block("i > 0"):
+                emit_lit(out_file, ",")
+            self.item_generator.emit_writer_inline(
+                array_item_path(in_expr, "i"),
+                out_file,
+            )
+        emit_lit(out_file, "]")
+
     def generate_writer_bodies(self, out_file):
-        self.item_generator.generate_writer_bodies(out_file)
-        out_file.print(
-            "static bool write_{}(json_write_state_t *state, const {} *in)"
-            .format(self.parser_name, self.c_type)
-        )
-        with out_file.code_block():
-            out_file.print("bool first = true;")
-            out_file.print("if (json_write_char(state, '[')) return true;")
-            with out_file.for_block("uint64_t i = 0; i < in->n; ++i"):
-                with out_file.if_block("!first"):
-                    out_file.print("if (json_write_char(state, ',')) return true;")
-                out_file.print("first = false;")
-                self.item_generator.generate_writer_call("&in->items[i]", out_file)
-            out_file.print("return json_write_char(state, ']');")
-        out_file.print("")
+        if not self.emit_public_writer:
+            return
+        begin_public_writer(out_file, self.json_writer_name(), self.c_type)
+        self.emit_writer_inline("in", out_file)
+        end_public_writer(out_file)

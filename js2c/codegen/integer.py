@@ -25,6 +25,7 @@
 from abc import abstractmethod
 
 from .base import Generator, CType, SchemaError
+from .writer_emit import emit_err
 
 
 class IntegerType(CType):
@@ -136,17 +137,14 @@ class IntegerGeneratorBase(Generator):
     def max_token_num(self):
         return 1
 
+    def emit_writer_inline(self, in_expr, out_file):
+        if self.c_type.is_unsigned():
+            emit_err(out_file, "json_write_inline_uint64_dec(state, {})".format(in_expr))
+        else:
+            emit_err(out_file, "json_write_inline_int64_dec(state, {})".format(in_expr))
+
     def generate_writer_bodies(self, out_file):
-        out_file.print(
-            "static bool write_{}(json_write_state_t *state, const {} *in)"
-            .format(self.parser_name, self.c_type)
-        )
-        with out_file.code_block():
-            if self.c_type.is_unsigned():
-                out_file.print("return json_write_uint64_dec(state, *in);")
-            else:
-                out_file.print("return json_write_int64_dec(state, *in);")
-        out_file.print("")
+        self.generate_leaf_writer_bodies(out_file)
 
 
 class IntegerGenerator(IntegerGeneratorBase):
@@ -219,19 +217,14 @@ class NumericStringGenerator(IntegerGenerator):
             return False
         return schema.get('pattern') in cls.UNSIGNED_PATTERNS or schema.get('pattern') in cls.SIGNED_PATTERNS
 
+    def emit_writer_inline(self, in_expr, out_file):
+        if self.c_type.is_unsigned():
+            emit_err(out_file, "json_write_inline_quoted_uint64_dec(state, {})".format(in_expr))
+        else:
+            emit_err(out_file, "json_write_inline_quoted_int64_dec(state, {})".format(in_expr))
+
     def generate_writer_bodies(self, out_file):
-        out_file.print(
-            "static bool write_{}(json_write_state_t *state, const {} *in)"
-            .format(self.parser_name, self.c_type)
-        )
-        with out_file.code_block():
-            if self.c_type.is_unsigned():
-                out_file.print("return json_write_quoted_uint64_dec(state, *in);")
-            else:
-                out_file.print("if (json_write_char(state, '\"')) return true;")
-                out_file.print("if (json_write_int64_dec(state, *in)) return true;")
-                out_file.print("return json_write_char(state, '\"');")
-        out_file.print("")
+        self.generate_leaf_writer_bodies(out_file)
 
 
 class IntegerStringAnyOfGenerator(NumericStringGenerator):

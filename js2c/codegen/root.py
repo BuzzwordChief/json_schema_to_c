@@ -29,7 +29,6 @@ from .code_block_printer import CodeBlockPrinter
 
 from .generator_factory import GeneratorFactory
 from .type_cache import TypeCache
-from .one_of import OneOfGenerator
 from .base import GeneratorInitParameters, SchemaError, sanitize_schema_id
 
 
@@ -200,6 +199,7 @@ class RootGenerator:
             self.manually_include_builtins(c_file)
         c_file.print('#include <stdio.h>')
         c_file.print('#include <inttypes.h>')
+        c_file.print('#include <string.h>')
         self.generate_double_conversion_hooks(c_file)
         c_file.print("")
         c_file.print_separator("Generated parsers")
@@ -214,8 +214,6 @@ class RootGenerator:
         c_file.print_separator("Generated JSON writers")
         c_file.print("")
         self.root_generator.generate_writer_bodies(c_file)
-        if not isinstance(self.root_generator, OneOfGenerator):
-            self.root_generator.generate_public_writer_wrapper(c_file)
 
         if self.settings.c_postfix_file:
             c_file.print_separator("User-added postfix")

@@ -25,6 +25,7 @@
 import re
 
 from .base import Generator, CType, SchemaError
+from .writer_emit import emit_lit, json_string_for_literal
 
 
 class EnumType(CType):
@@ -120,19 +121,26 @@ class EnumGenerator(Generator):
     def max_token_num(self):
         return 1
 
+    def emit_writer_inline(self, in_expr, out_file):
+        if len(self.enum) == 1:
+            emit_lit(out_file, '"' + json_string_for_literal(self.enum[0]) + '"')
+            return
+
+        out_file.print("switch ({}) {{".format(in_expr))
+        out_file.indent_level += 4
+        for enum_label in self.enum:
+            out_file.print("case {}:".format(self.convert_enum_label(enum_label)))
+            out_file.indent_level += 4
+            emit_lit(out_file, '"' + json_string_for_literal(enum_label) + '"')
+            out_file.print("break;")
+            out_file.indent_level -= 4
+        out_file.print("default:")
+        out_file.indent_level += 4
+        out_file.print("err = true;")
+        out_file.print("break;")
+        out_file.indent_level -= 4
+        out_file.indent_level -= 4
+        out_file.print("}")
+
     def generate_writer_bodies(self, out_file):
-        out_file.print(
-            "static bool write_{}(json_write_state_t *state, const {} *in)"
-            .format(self.parser_name, self.c_type)
-        )
-        with out_file.code_block():
-            for enum_label in self.enum:
-                with out_file.if_block("*in == {}".format(self.convert_enum_label(enum_label))):
-                    out_file.print(
-                        "return json_write_escaped_cstr(state, \"{}\");"
-                        .format(enum_label)
-                    )
-                out_file.print("else")
-            with out_file.code_block():
-                out_file.print("return true;")
-        out_file.print("")
+        self.generate_leaf_writer_bodies(out_file)

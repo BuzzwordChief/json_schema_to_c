@@ -25,6 +25,7 @@
 from collections import OrderedDict
 
 from .base import Generator, CType, SchemaError
+from .writer_emit import begin_public_writer, emit_err, emit_lit, end_public_writer
 
 
 NESTED_DEFAULT_MAX_STRING_LENGTH = 256
@@ -157,25 +158,15 @@ class StringGenerator(Generator):
     def max_token_num(self):
         return 1
 
-    def generate_writer_bodies(self, out_file):
+    def emit_writer_inline(self, in_expr, out_file):
         if self.js2cParseFunction is not None:
-            out_file.print(
-                "static bool write_{}(json_write_state_t *state, const {} *in)"
-                .format(self.parser_name, self.c_type)
-            )
-            with out_file.code_block():
-                out_file.print("(void)state;")
-                out_file.print("(void)in;")
-                out_file.print("return true;")
-            out_file.print("")
+            out_file.print("(void){};".format(in_expr))
+            out_file.print("err = true;")
             return
-        out_file.print(
-            "static bool write_{}(json_write_state_t *state, const {} *in)"
-            .format(self.parser_name, self.c_type)
-        )
-        with out_file.code_block():
-            out_file.print("return json_write_escaped_cstr(state, *in);")
-        out_file.print("")
+        emit_err(out_file, "json_write_inline_escaped_cstr(state, {})".format(in_expr))
+
+    def generate_writer_bodies(self, out_file):
+        self.generate_leaf_writer_bodies(out_file)
 
 
 class NullableType(CType):
@@ -276,15 +267,25 @@ class StringOrNullAnyOfGenerator(Generator):
     def max_token_num(self):
         return self.inner_generator.max_token_num()
 
-    def generate_writer_bodies(self, out_file):
-        self.inner_generator.generate_writer_bodies(out_file)
-        out_file.print(
-            "static bool write_{}(json_write_state_t *state, const {} *in)"
-            .format(self.parser_name, self.c_type)
-        )
+    @classmethod
+    def nullable_member_path(cls, in_expr, member):
+        if in_expr == "in":
+            return "in->{}".format(member)
+        return "{}.{}".format(in_expr, member)
+
+    def emit_writer_inline(self, in_expr, out_file):
+        with out_file.if_block(self.nullable_member_path(in_expr, "is_null")):
+            emit_lit(out_file, "null")
+        out_file.print("else")
         with out_file.code_block():
-            with out_file.if_block("in->is_null"):
-                out_file.print("return json_write_null(state);")
-            self.inner_generator.generate_writer_call("&in->value", out_file)
-            out_file.print("return false;")
-        out_file.print("")
+            self.inner_generator.emit_writer_inline(
+                self.nullable_member_path(in_expr, "value"),
+                out_file,
+            )
+
+    def generate_writer_bodies(self, out_file):
+        if not self.emit_public_writer:
+            return
+        begin_public_writer(out_file, self.json_writer_name(), self.c_type)
+        self.emit_writer_inline("in", out_file)
+        end_public_writer(out_file)

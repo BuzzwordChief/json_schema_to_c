@@ -161,7 +161,6 @@ class OneOfGenerator(Generator):
     def generate_writer_bodies(self, out_file):
         for _, variant_generator in self.variants:
             variant_generator.generate_writer_bodies(out_file)
-            variant_generator.generate_public_writer_wrapper(out_file)
 
     def generate_writer_declaration(self, out_file):
         for _, variant_generator in self.variants:

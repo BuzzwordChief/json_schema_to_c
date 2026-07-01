@@ -23,6 +23,7 @@
 # SOFTWARE.
 #
 from .base import Generator, CType
+from .writer_emit import emit_err
 
 
 class FloatGenerator(Generator):
@@ -83,13 +84,8 @@ class FloatGenerator(Generator):
     def max_token_num(self):
         return 1
 
+    def emit_writer_inline(self, in_expr, out_file):
+        emit_err(out_file, "json_write_inline_double(state, {})".format(in_expr))
+
     def generate_writer_bodies(self, out_file):
-        out_file.print(
-            "static bool write_{}(json_write_state_t *state, const double *in)"
-            .format(self.parser_name)
-        )
-        with out_file.code_block():
-            out_file.print("char tmp[JS2C_DOUBLE_STR_MAX_LEN];")
-            out_file.print("js2c_format_double(*in, tmp);")
-            out_file.print("return json_write_cstr(state, tmp);")
-        out_file.print("")
+        self.generate_leaf_writer_bodies(out_file)

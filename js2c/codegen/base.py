@@ -26,6 +26,8 @@ from abc import ABC, abstractmethod
 from collections import namedtuple
 import re
 
+from .writer_emit import begin_public_writer, end_public_writer
+
 
 def sanitize_schema_id(schema_id):
     if '/' in schema_id or ':' in schema_id:
@@ -145,22 +147,15 @@ class Generator(ABC):
     def generate_writer_bodies(self, out_file):
         pass
 
-    def generate_public_writer_wrapper(self, out_file):
+    def emit_writer_inline(self, in_expr, out_file):
+        pass
+
+    def generate_leaf_writer_bodies(self, out_file, value_expr="*in"):
         if not self.emit_public_writer:
             return
-        out_file.print(
-            "bool {}(json_write_state_t *state, const {} *in)"
-            .format(self.json_writer_name(), self.c_type)
-        )
-        with out_file.code_block():
-            out_file.print("if (write_{}(state, in)) return true;".format(self.parser_name))
-            out_file.print("if (state->pos < state->capacity) state->buf[state->pos] = '\\0';")
-            out_file.print("return false;")
-        out_file.print("")
-
-    def generate_writer_call(self, in_expr, out_file):
-        with out_file.if_block("write_{}(state, {})".format(self.parser_name, in_expr)):
-            out_file.print("return true;")
+        begin_public_writer(out_file, self.json_writer_name(), self.c_type)
+        self.emit_writer_inline(value_expr, out_file)
+        end_public_writer(out_file)
 
     def has_default_value(self):
         return self.js2cDefault is not None

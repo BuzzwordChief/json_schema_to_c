@@ -27,6 +27,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #define JS2C_DOUBLE_STR_MAX_LEN 25
 
@@ -48,18 +49,19 @@ typedef struct json_write_state_s {
 
 /* true = error (typically buffer overflow), false = success */
 static inline bool json_write_bytes(json_write_state_t *state, const char *data, size_t len) {
-    if (state->pos + len > state->capacity) {
+    if (state->pos + len >= state->capacity) {
         return true;
     }
-    for (size_t i = 0; i < len; ++i) {
-        state->buf[state->pos + i] = data[i];
-    }
+    memcpy(state->buf + state->pos, data, len);
     state->pos += len;
     return false;
 }
 
+#define json_write_lit(state, lit) \
+    json_write_bytes((state), (lit), sizeof(lit) - 1)
+
 static inline bool json_write_char(json_write_state_t *state, char c) {
-    if (state->pos >= state->capacity) {
+    if (state->pos + 1 >= state->capacity) {
         return true;
     }
     state->buf[state->pos++] = c;
@@ -76,11 +78,14 @@ static inline bool json_write_cstr(json_write_state_t *state, const char *s) {
 }
 
 static inline bool json_write_null(json_write_state_t *state) {
-    return json_write_cstr(state, "null");
+    return json_write_lit(state, "null");
 }
 
 static inline bool json_write_bool(json_write_state_t *state, bool value) {
-    return json_write_cstr(state, value ? "true" : "false");
+    if (value) {
+        return json_write_lit(state, "true");
+    }
+    return json_write_lit(state, "false");
 }
 
 static inline bool json_write_uint64_dec(json_write_state_t *state, uint64_t value) {
@@ -157,6 +162,46 @@ static inline bool json_write_escaped_cstr(json_write_state_t *state, const char
         }
     }
     return json_write_char(state, '"');
+}
+
+static inline bool json_write_inline_cstr(json_write_state_t *state, const char *s) {
+    return json_write_cstr(state, s);
+}
+
+static inline bool json_write_inline_escaped_cstr(json_write_state_t *state, const char *s) {
+    return json_write_escaped_cstr(state, s);
+}
+
+static inline bool json_write_inline_uint64_dec(json_write_state_t *state, uint64_t value) {
+    return json_write_uint64_dec(state, value);
+}
+
+static inline bool json_write_inline_int64_dec(json_write_state_t *state, int64_t value) {
+    return json_write_int64_dec(state, value);
+}
+
+static inline bool json_write_inline_quoted_uint64_dec(json_write_state_t *state, uint64_t value) {
+    return json_write_quoted_uint64_dec(state, value);
+}
+
+static inline bool json_write_inline_quoted_int64_dec(json_write_state_t *state, int64_t value) {
+    if (json_write_char(state, '"')) {
+        return true;
+    }
+    if (json_write_int64_dec(state, value)) {
+        return true;
+    }
+    return json_write_char(state, '"');
+}
+
+static inline bool json_write_inline_bool(json_write_state_t *state, bool value) {
+    return json_write_bool(state, value);
+}
+
+static inline bool json_write_inline_double(json_write_state_t *state, double value) {
+    char tmp[JS2C_DOUBLE_STR_MAX_LEN];
+    js2c_format_double(value, tmp);
+    return json_write_inline_cstr(state, tmp);
 }
 
 #endif /* JS2C_WRITE_BUILTINS_H */
